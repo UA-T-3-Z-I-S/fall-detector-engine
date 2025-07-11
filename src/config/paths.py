@@ -24,3 +24,17 @@ MODEL_PATH = os.getenv(
     'MODEL_PATH',
     os.path.join('keras', 'fall_detector_model.keras')  # Fallback por defecto
 )
+
+# =============================
+# SUBMODELOS OPTIMIZADOS IA
+# =============================
+
+MODEL_PATH_CNN = os.getenv(
+    'MODEL_PATH_CNN',
+    os.path.join('keras', 'modelo_cnn.keras')
+)
+
+MODEL_PATH_LSTM = os.getenv(
+    'MODEL_PATH_LSTM',
+    os.path.join('keras', 'modelo_lstm.keras')
+)
