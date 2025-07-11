@@ -108,10 +108,19 @@ def mostrar_prediccion_en_video(frames, predicciones, probabilidades=None, video
                 start_time = time.time()
                 frames = load_video_frames(video_path)
                 buffers = create_buffers(frames)
-                result = detector.predict_video(buffers)
-                end_time = time.time()
 
-                print(f"[⏱] Tiempo total de procesamiento: {end_time - start_time:.2f} segundos")
+                predict_start = time.time()
+                result = detector.predict_video(buffers)
+                predict_end = time.time()
+
+                total_time = predict_end - start_time
+                predict_time = predict_end - predict_start
+
+                print(f"[⏱] Tiempo total de procesamiento: {total_time:.2f} segundos")
+                print(f"[⚙️] Tiempo de predicción CNN+LSTM: {predict_time:.2f} segundos")
+                if "tiempo_cnn" in result and "tiempo_lstm" in result:
+                    print(f"[🧠] Tiempo CNN: {result['tiempo_cnn']:.2f} s | Tiempo LSTM: {result['tiempo_lstm']:.2f} s")
+
                 print(f"[✔] Voto final: {sum(result['predicciones'])} de {result['buffers_totales']} buffers indican caida "
                       f"(ratio: {result['porcentaje']:.2f})")
                 print("[🔴] 🔔 ALARMA: CAIDA DETECTADA" if result['caida'] else "[🟢] No se detectó caida.")
@@ -126,7 +135,7 @@ def mostrar_prediccion_en_video(frames, predicciones, probabilidades=None, video
                     result['probabilidades'],
                     video_path=video_path,
                     caida_detectada=result['caida'],
-                    detector=detector  # 🔁 ¡SE PASA OTRA VEZ!
+                    detector=detector
                 )
                 return
 

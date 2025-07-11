@@ -1,4 +1,5 @@
 import numpy as np
+import time  # ⏱️ Para medir tiempo
 from keras.models import load_model
 from config.paths import MODEL_PATH_CNN, MODEL_PATH_LSTM
 
@@ -9,43 +10,6 @@ class FallDetectorSeparated:
         self.lstm = load_model(MODEL_PATH_LSTM)
         self.threshold = threshold
 
-    def extract_embeddings(self, buffers):
-        """
-        Aplica CNN frame por frame en cada buffer y retorna embeddings.
-        Entrada: (num_buffers, 16, 224, 224, 3)
-        Salida:  (num_buffers, 16, embedding_size)
-        """
-        x = np.array(buffers)
-        embeddings = self.cnn.predict(x, verbose=0)
-        return embeddings
-
-    def predict_sequence(self, embeddings):
-        """
-        Aplica el modelo LSTM sobre la secuencia completa de embeddings.
-        Entrada: (16, embedding_size) o (1, 16, embedding_size)
-        Salida: probabilidad de caída
-        """
-        embeddings = np.squeeze(embeddings)
-
-        if embeddings.ndim == 2:
-            x = np.expand_dims(embeddings, axis=0)  # (1, 16, embedding_size)
-        elif embeddings.ndim == 3:
-            x = embeddings  # (1, 16, embedding_size)
-        else:
-            raise ValueError(f"❌ Dimensión inesperada en embeddings: {embeddings.shape}")
-
-        prob = self.lstm.predict(x, verbose=0)
-
-        # ⚠️ Asegura que se extrae valor escalar
-        if prob.ndim == 2 and prob.shape[1] == 1:
-            prob = float(prob[0][0])
-        elif prob.ndim == 1:
-            prob = float(prob[0])
-        else:
-            raise ValueError(f"❌ Forma inesperada de salida en LSTM: {prob.shape}")
-
-        return (1 if prob >= self.threshold else 0), prob
-
     def predict_video(self, buffers):
         if not buffers:
             return {
@@ -54,21 +18,34 @@ class FallDetectorSeparated:
                 'probabilidad_final': 0.0,
                 'porcentaje': 0.0,
                 'predicciones': [],
-                'probabilidades': []
+                'probabilidades': [],
+                'tiempo_total': 0.0,
+                'tiempo_cnn': 0.0,
+                'tiempo_lstm': 0.0,
             }
 
-        predicciones = []
-        probabilidades = []
+        # [⏱️] Inicia cronómetro total
+        tiempo_total_inicio = time.time()
 
-        for buffer in buffers:
-            embeddings = self.extract_embeddings([buffer])  # (1, 16, 224, 224, 3)
-            label, prob = self.predict_sequence(embeddings)
-            predicciones.append(label)
-            probabilidades.append(prob)
+        # [🚀] Extraer embeddings en lote con CNN
+        x = np.array(buffers)  # (num_buffers, 16, 224, 224, 3)
+        tiempo_cnn_inicio = time.time()
+        embeddings_batch = self.cnn.predict(x, verbose=0)
+        tiempo_cnn = time.time() - tiempo_cnn_inicio
+
+        # [🔮] Predecir todas las secuencias en lote con LSTM
+        tiempo_lstm_inicio = time.time()
+        probs = self.lstm.predict(embeddings_batch, verbose=0)  # (num_buffers, 1)
+        tiempo_lstm = time.time() - tiempo_lstm_inicio
+
+        probs = np.atleast_1d(np.squeeze(probs))  # Asegura array 1D
+        probabilidades = probs.tolist()
+        predicciones = (probs >= self.threshold).astype(int).tolist()
 
         positivos = sum(predicciones)
         total = len(buffers)
         porcentaje = positivos / total if total > 0 else 0.0
+        tiempo_total = time.time() - tiempo_total_inicio
 
         return {
             'caida': positivos > 0,
@@ -76,5 +53,8 @@ class FallDetectorSeparated:
             'probabilidad_final': max(probabilidades),
             'porcentaje': porcentaje,
             'predicciones': predicciones,
-            'probabilidades': probabilidades
+            'probabilidades': probabilidades,
+            'tiempo_total': tiempo_total,
+            'tiempo_cnn': tiempo_cnn,
+            'tiempo_lstm': tiempo_lstm,
         }
