@@ -9,3 +9,5 @@ __pycache__/
 *.pyo
 # Ignorar archivos de configuración local
 .env
+build/
+dist/

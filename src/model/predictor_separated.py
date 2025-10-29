@@ -1,8 +1,19 @@
+import sys
+import os
 import numpy as np
 import time
 from datetime import datetime
 from keras.models import load_model
-from ..config.paths import MODEL_PATH_CNN, MODEL_PATH_LSTM  # import relativo
+
+# === Asegurarse de que 'src' esté en sys.path ===
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+SRC_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))  # sube un nivel desde model/
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+# Ahora podemos importar paths de forma absoluta
+from config.paths import MODEL_PATH_CNN, MODEL_PATH_LSTM
+
 
 class FallDetectorSeparated:
     def __init__(self, threshold=0.5):
@@ -12,7 +23,6 @@ class FallDetectorSeparated:
         self.threshold = threshold
 
     def predict_video(self, buffers):
-        # Timestamp del momento en que se recibe el buffer
         timestamp_buffer = datetime.utcnow().isoformat() + "Z"
 
         if not buffers:
@@ -28,7 +38,7 @@ class FallDetectorSeparated:
 
         # --- Etapa CNN ---
         tiempo_inicio_cnn = time.time()
-        x = np.array(buffers)  # (num_buffers, 16, 224, 224, 3)
+        x = np.array(buffers)
         embeddings_batch = self.cnn.predict(x, verbose=0)
         tiempo_cnn = time.time() - tiempo_inicio_cnn
 
@@ -58,7 +68,6 @@ class FallDetectorSeparated:
             "timestamp_buffer": timestamp_buffer
         }
 
-        # Solo incluir tiempos si hay caída detectada
         if caida_detectada:
             resultado.update({
                 "tiempo_cnn": tiempo_cnn,

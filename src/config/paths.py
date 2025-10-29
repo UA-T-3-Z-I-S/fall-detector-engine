@@ -1,10 +1,30 @@
 import os
+import sys
 from dotenv import load_dotenv
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))  # ahora apunta a fall-detector-engine
-load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
+# === BASE_DIR ===
+if getattr(sys, 'frozen', False):  # Si se ejecuta desde el .exe
+    BASE_DIR = sys._MEIPASS  # Carpeta temporal del .exe
+    PROJECT_ROOT = BASE_DIR
+else:  # Desarrollo
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))  # src/config/
+    PROJECT_ROOT = os.path.abspath(os.path.join(BASE_DIR, '..', '..'))
+    load_dotenv(os.path.join(PROJECT_ROOT, '.env'))
 
-MODEL_PATH_CNN = os.path.join(PROJECT_ROOT, os.getenv("MODEL_PATH_CNN", "src/keras/model_cnn.keras"))
-MODEL_PATH_LSTM = os.path.join(PROJECT_ROOT, os.getenv("MODEL_PATH_LSTM", "src/keras/model_lstm.keras"))
-MODEL_PATH = os.path.join(PROJECT_ROOT, os.getenv("MODEL_PATH", "src/keras/final_model.keras"))
+# === CONFIGURACIÓN DE MODELOS ===
+MODEL_PATH_CNN = os.path.join(PROJECT_ROOT, "src", "keras", "model_cnn.keras")
+MODEL_PATH_LSTM = os.path.join(PROJECT_ROOT, "src", "keras", "model_lstm.keras")
+MODEL_PATH = os.path.join(PROJECT_ROOT, "src", "keras", "final_model.keras")
+
+# Si es ejecutable, los modelos se buscan dentro del bundle (.exe)
+if getattr(sys, 'frozen', False):
+    MODEL_PATH_CNN = os.path.join(BASE_DIR, "keras", "model_cnn.keras")
+    MODEL_PATH_LSTM = os.path.join(BASE_DIR, "keras", "model_lstm.keras")
+    MODEL_PATH = os.path.join(BASE_DIR, "keras", "final_model.keras")
+
+# === CONFIG LOCAL ===
+CONFIG_PATH = (
+    os.path.join(BASE_DIR, "config_local.json")
+    if getattr(sys, 'frozen', False)
+    else os.path.join(PROJECT_ROOT, "config_local.json")
+)

@@ -1,6 +1,6 @@
+import os
 import sys
 import json
-import os
 import cv2
 import threading
 import datetime
@@ -8,30 +8,36 @@ import time
 import numpy as np
 from dotenv import load_dotenv
 
-# === CONFIGURACIÓN BASE ===
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+# === AJUSTE DE RUTAS ===
+BASE_DIR = getattr(sys, "_MEIPASS", os.path.dirname(os.path.abspath(__file__)))
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 
-load_dotenv(os.path.join(ROOT_DIR, '.env'))
-CONFIG_LOCAL_PATH = os.path.join(ROOT_DIR, 'config_local.json')
+# Asegura que los módulos locales estén disponibles
+sys.path.append(BASE_DIR)
+sys.path.append(ROOT_DIR)
 
-# === IMPORTS RELATIVOS ===
-from src.preprocessing.buffer_creator import create_buffers
-from src.model.predictor_separated import FallDetectorSeparated
+# === IMPORTS DIRECTOS (sin "src.") ===
+from config.paths import MODEL_PATH_CNN, MODEL_PATH_LSTM, CONFIG_PATH
+from preprocessing.buffer_creator import create_buffers
+from model.predictor_separated import FallDetectorSeparated
 
-# === VARIABLES GLOBALES ===
+
+# ==========================
+# VARIABLES GLOBALES
+# ==========================
 detector = None
 current_rtsp = ""
 current_camera = "CAM-DESCONOCIDA"
 running = True
 lock = threading.Lock()
 camera_ready = False
-# ===========================
 
 
-# ----------- FUNCIONES BÁSICAS -------------
+# ==========================
+# FUNCIONES AUXILIARES
+# ==========================
 def emitir_evento(evento, data=None):
-    """Envía salida JSON (para Electron)"""
+    """Envía salida JSON (para Electron o consola)"""
     payload = {"evento": evento}
     if data:
         payload.update(data)
@@ -42,12 +48,12 @@ def cargar_config_local():
     """Carga config_local.json con RTSP y nombre de cámara"""
     global current_rtsp, current_camera, camera_ready
     try:
-        if not os.path.exists(CONFIG_LOCAL_PATH):
-            emitir_evento("advertencia", {"mensaje": "No se encontró config_local.json. Esperando configuración inicial..."})
+        if not os.path.exists(CONFIG_PATH):
+            emitir_evento("advertencia", {"mensaje": f"No se encontró {CONFIG_PATH}. Esperando configuración inicial..."})
             camera_ready = False
             return
 
-        with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
             current_rtsp = cfg.get("LIVE_CAMERA_URL", "")
             current_camera = cfg.get("CAMERA_NAME", "CAM-DESCONOCIDA")
@@ -73,13 +79,15 @@ def inicializar_modelo():
     except Exception as e:
         emitir_evento("error", {"mensaje": f"Error cargando modelo: {e}"})
 
-# ----------- DETECCIÓN POR RTSP -------------
+
+# ==========================
+# DETECCIÓN EN TIEMPO REAL
+# ==========================
 def detectar_caidas():
     """Lee continuamente del stream RTSP y detecta caídas"""
     global running, current_rtsp, current_camera, camera_ready
 
     while running:
-        # Esperar configuración si no hay cámara
         if not camera_ready or not current_rtsp:
             time.sleep(2)
             continue
@@ -121,11 +129,14 @@ def detectar_caidas():
             time.sleep(0.05)  # regula carga de CPU
 
         cap.release()
-        time.sleep(2)  # evita reconexión rápida
+        time.sleep(2)
 
 
-# ----------- COMANDOS DESDE ELECTRON -------------
+# ==========================
+# COMANDOS DESDE ELECTRON
+# ==========================
 def procesar_comando(linea):
+    """Procesa comandos enviados desde Electron por stdin"""
     global running, current_rtsp, current_camera, camera_ready
 
     try:
@@ -162,12 +173,14 @@ def loop_escucha():
         procesar_comando(linea.strip())
 
 
-# ----------- MODO SIMULACIÓN -------------
+# ==========================
+# SIMULADOR DE EVENTOS
+# ==========================
 def simulador_eventos():
     """Genera eventos simulados si no hay RTSP"""
     global running, current_camera
     try:
-        with open(CONFIG_LOCAL_PATH, "r", encoding="utf-8") as f:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
             cfg = json.load(f)
             sim_enabled = cfg.get("ENABLE_SIMULATION", False)
             interval = cfg.get("SIMULATION_INTERVAL", 10)
@@ -181,14 +194,16 @@ def simulador_eventos():
         time.sleep(interval)
 
 
-# ----------- MAIN -------------
+# ==========================
+# MAIN
+# ==========================
 if __name__ == "__main__":
     emitir_evento("modelo_iniciando")
 
     cargar_config_local()
     inicializar_modelo()
 
-    # Inicia hilos paralelos
+    # Hilos paralelos
     threading.Thread(target=detectar_caidas, daemon=True).start()
     threading.Thread(target=simulador_eventos, daemon=True).start()
 
