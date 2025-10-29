@@ -1,27 +1,23 @@
 import cv2
 
-def load_video_frames(video_path, max_frames=None, resize_to=(224, 224), skip_frames=2):
-    cap = cv2.VideoCapture(video_path)
+def load_rtsp_frames(rtsp_url, num_frames=32, resize_to=(224, 224)):
+    """
+    Captura N frames consecutivos desde un stream RTSP.
+    Devuelve una lista de frames redimensionados.
+    """
+    cap = cv2.VideoCapture(rtsp_url)
     frames = []
-    frame_idx = 0
-
     if not cap.isOpened():
-        print(f"[❌] No se pudo abrir el video: {video_path}")
+        print(f"[❌] No se pudo abrir el stream RTSP: {rtsp_url}")
         return frames
 
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-
-    while frame_idx < total_frames:
-        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+    while len(frames) < num_frames:
         ret, frame = cap.read()
-        if not ret or (max_frames and len(frames) >= max_frames):
+        if not ret:
             break
-
         if resize_to:
             frame = cv2.resize(frame, resize_to, interpolation=cv2.INTER_AREA)
         frames.append(frame)
-
-        frame_idx += skip_frames  # Salta N frames directamente
 
     cap.release()
     return frames

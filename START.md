@@ -2,8 +2,8 @@
 
 #### Iniciar el Motor IA
 
-**python src/main.py**
+python -m src.model_ia.py
 
 #### Para Separar el Modelo CNN + LSTM
 
-**python src/separator_model.py**
+python src/split_model.py
