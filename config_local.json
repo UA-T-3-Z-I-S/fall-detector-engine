@@ -1,9 +1,11 @@
 {
-  "LIVE_CAMERA_URL": "rtsp://sistema_ia:albergue001patio@192.168.1.21:554/stream2",
+  "LIVE_CAMERA_URL": "rtsp://sistema_ia:albergue001patio@192.168.1.46:554/stream2",
   "CAMERA_NAME": "CAM-01",
   "COOLDOWN_SECONDS": 60,
   "DISPLAY_SIZE": [640, 360],
   "ENABLE_SIMULATION": false,
   "SIMULATION_INTERVAL": 10,
-  "SIMULATION_ACTIVE": false
+  "SIMULATION_ACTIVE": false,
+  "PREDICT_WORKERS": 2,
+  "MIN_DETECTION_PERCENTAGE": 0.4
 }
