@@ -3,7 +3,6 @@
 import sys
 import os
 
-# === Aseguramos ruta raíz ===
 project_root = os.path.abspath(".")
 src_path = os.path.join(project_root, "src")
 if src_path not in sys.path:
@@ -16,7 +15,6 @@ a = Analysis(
         ('src/keras/model_cnn.keras', 'keras'),
         ('src/keras/model_lstm.keras', 'keras'),
         ('src/keras/final_model.keras', 'keras'),
-        ('config_local.json', '.'),
         ('src/config/*', 'config'),
         ('src/model/*', 'model'),
         ('src/preprocessing/*', 'preprocessing'),

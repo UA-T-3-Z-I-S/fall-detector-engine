@@ -23,8 +23,10 @@ if getattr(sys, 'frozen', False):
     MODEL_PATH = os.path.join(BASE_DIR, "keras", "final_model.keras")
 
 # === CONFIG LOCAL ===
-CONFIG_PATH = (
-    os.path.join(BASE_DIR, "config_local.json")
-    if getattr(sys, 'frozen', False)
-    else os.path.join(PROJECT_ROOT, "config_local.json")
-)
+if getattr(sys, 'frozen', False):
+    # Busca el JSON en el mismo directorio donde esté el .exe
+    CONFIG_PATH = os.path.join(os.getcwd(), "config_local.json")
+else:
+    # En desarrollo, sigue usando la raíz del proyecto
+    CONFIG_PATH = os.path.join(PROJECT_ROOT, "config_local.json")
+
