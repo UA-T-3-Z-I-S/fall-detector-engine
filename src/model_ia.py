@@ -30,12 +30,13 @@ lock = threading.Lock()
 camera_ready = False
 last_fall_time = 0
 cooldown_seconds = 60
+cooldown_until = 0  # <-- nuevo: marca hasta cuándo está activo el cooldown
 display_size = (640, 360)  # valor por defecto
 
 # Parámetros configurables desde config_local.json
 DEFAULTS = {
     "PREDICT_WORKERS": 2,
-    "MIN_DETECTION_PERCENTAGE": 0.4,
+    "MIN_DETECTION_PERCENTAGE": 0.6,  # relajado temporalmente: 60%
     "FRAME_QUEUE_MAX": 128,
     "BUFFER_QUEUE_MAX": 8,
     "FRAMES_PER_BATCH": 32,
@@ -43,8 +44,12 @@ DEFAULTS = {
     "FRAME_TIMEOUT_SECONDS": 3.0,
     "RECONNECT_AFTER_INVALIDS": 15,
     "DISPLAY_SIZE": [640, 360],
-    "COOLDOWN_SECONDS": 60
+    "COOLDOWN_SECONDS": 60,
+    "MIN_MOTION": 0.02,   # menos estricto: frames normalizados [0,1]
+    "MIN_CONSECUTIVE_DETECTIONS": 1  # permitir 1 detección consecutiva para pruebas
 }
+
+consecutive_detections = 0  # contador de detecciones consecutivas
 
 # ==========================
 # FUNCIONES AUXILIARES
@@ -224,19 +229,53 @@ def detectar_caidas():
                 if not buffers:
                     continue
                 telemetry["buffers_produced"] += 1
+                # timestamp del buffer (UTC ISO)
+                buffer_ts = datetime.datetime.utcnow().isoformat() + "Z"
                 try:
-                    buffer_queue.put_nowait(buffers)
+                    # se encola un dict con buffers y timestamp
+                    buffer_queue.put_nowait({"buffers": buffers, "timestamp": buffer_ts})
                 except queue.Full:
                     telemetry["buffers_dropped_full"] += 1
 
     # Predictor
     def predictor_worker(worker_id):
         nonlocal telemetry
+        global cooldown_until, last_fall_time, consecutive_detections
         while not stop_threads.is_set() and running:
             try:
-                buffers = buffer_queue.get(timeout=1.0)
+                item = buffer_queue.get(timeout=1.0)
             except Exception:
                 continue
+
+            # item ahora es dict {"buffers": buffers, "timestamp": ts}
+            buffers = item.get("buffers") if isinstance(item, dict) else item
+            buffer_ts = item.get("timestamp") if isinstance(item, dict) else None
+
+            # Si estamos en cooldown, descartamos los buffers (los dejamos pasar)
+            now = time.time()
+            if now < cooldown_until:
+                telemetry["buffers_dropped_cooldown"] = telemetry.get("buffers_dropped_cooldown", 0) + 1
+                continue
+
+            # --- NUEVO: comprobar movimiento mínimo en los buffers antes de predecir ---
+            try:
+                motions = []
+                for b in buffers:
+                    if hasattr(b, "shape") and b.shape[0] >= 2:
+                        # Los frames vienen normalizados [0,1] del modelo
+                        diffs = np.abs(b[1:] - b[:-1])
+                        mean_diff = float(np.mean(diffs))
+                        motions.append(mean_diff)
+        
+                mean_motion = float(np.mean(motions)) if motions else 0.0
+
+                if mean_motion < DEFAULTS["MIN_MOTION"]:
+                    telemetry["buffers_dropped_no_motion"] = telemetry.get("buffers_dropped_no_motion", 0) + 1
+                    continue
+            except Exception as e:
+                emitir_evento("error", {"mensaje": f"Motion check error: {str(e)}"})
+                continue
+
             telemetry["buffers_processed"] += 1
             try:
                 result = detector.predict_video(buffers)
@@ -244,29 +283,50 @@ def detectar_caidas():
                 emitir_evento("error", {"mensaje": f"Worker {worker_id} predict fallo: {e}"})
                 continue
 
+            # Modificar la sección de detección
             porcentaje = float(result.get("porcentaje", 0.0))
             if porcentaje >= MIN_DETECTION_PERCENTAGE:
-                now = time.time()
-                with lock:
-                    if now - last_fall_time >= cooldown_seconds:
-                        last_fall_time = now
-                        timestamp = datetime.datetime.utcnow().isoformat() + "Z"
-                        emitir_evento("caida_detectada", {
-                            "camara": current_camera,
-                            "timestamp": timestamp,
-                            "porcentaje": porcentaje,
-                            "buffers_totales": result.get("buffers_totales", 0)
-                        })
-                    else:
-                        emitir_evento("cooldown_activo", {
-                            "camara": current_camera,
-                            "restante": round(cooldown_seconds - (now - last_fall_time), 1)
-                        })
+                consecutive_detections += 1
+                emitir_evento("deteccion_debug", {
+                    "consecutivas": consecutive_detections,
+                    "requeridas": DEFAULTS["MIN_CONSECUTIVE_DETECTIONS"],
+                    "porcentaje": porcentaje
+                })
+                
+                if consecutive_detections >= DEFAULTS["MIN_CONSECUTIVE_DETECTIONS"]:
+                    now = time.time()
+                    with lock:
+                        if now >= cooldown_until:
+                            last_fall_time = now
+                            cooldown_until = now + cooldown_seconds
+                            consecutive_detections = 0  # reiniciar contador
+                            
+                            # Vaciar buffers pendientes
+                            cleared = 0
+                            try:
+                                while not buffer_queue.empty():
+                                    buffer_queue.get_nowait()
+                                    cleared += 1
+                            except Exception:
+                                pass
+                                
+                            timestamp = datetime.datetime.utcnow().isoformat() + "Z"
+                            emitir_evento("caida_detectada", {
+                                "camara": current_camera,
+                                "timestamp": timestamp,
+                                "porcentaje": porcentaje,
+                                "buffers_totales": result.get("buffers_totales", 0),
+                                "buffer_ts": buffer_ts,
+                                "buffers_cleared": cleared,
+                                "detecciones_consecutivas": DEFAULTS["MIN_CONSECUTIVE_DETECTIONS"]
+                            })
             else:
+                consecutive_detections = 0  # reiniciar si no detecta
                 emitir_evento("resultado_descartado", {
                     "camara": current_camera,
                     "porcentaje": porcentaje,
-                    "buffers_totales": result.get("buffers_totales", 0)
+                    "buffers_totales": result.get("buffers_totales", 0),
+                    "buffer_ts": buffer_ts
                 })
 
     # Bucle principal
